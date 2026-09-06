@@ -33,9 +33,11 @@ import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -299,37 +301,150 @@ public class JpaCbrCaseMemoryStore implements CbrCaseMemoryStore {
 
     @Override
     @Transactional
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
+    public boolean supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
         java.util.Objects.requireNonNull(caseId, "caseId required");
         java.util.Objects.requireNonNull(tenantId, "tenantId required");
         var results = em.createQuery("SELECT e FROM CbrCaseEntity e WHERE e.caseId = :cid AND e.tenantId = :t", CbrCaseEntity.class)
                         .setParameter("cid", caseId).setParameter("t", tenantId).getResultList();
-        if (results.isEmpty()) return;
+        if (results.isEmpty()) return false;
         CbrCaseEntity entity = results.getFirst();
         if (entity.supersededAt != null) {
-            if (supersedingCaseId != null) entity.supersedingCaseId = supersedingCaseId;
-            if (reason != null) entity.supersessionReason = reason;
-        } else {
-            entity.supersededAt = Instant.now();
-            entity.supersedingCaseId = supersedingCaseId;
-            entity.supersessionReason = reason;
+            return false;
         }
+        entity.supersededAt = Instant.now();
+        entity.supersedingCaseId = supersedingCaseId;
+        entity.supersessionReason = reason;
         entity.reinstatedAt = null;
+        return true;
     }
 
     @Override
     @Transactional
-    public void reinstate(String caseId, String tenantId) {
+    public boolean reinstate(String caseId, String tenantId) {
         java.util.Objects.requireNonNull(caseId, "caseId required");
         java.util.Objects.requireNonNull(tenantId, "tenantId required");
         var results = em.createQuery("SELECT e FROM CbrCaseEntity e WHERE e.caseId = :cid AND e.tenantId = :t", CbrCaseEntity.class)
                         .setParameter("cid", caseId).setParameter("t", tenantId).getResultList();
-        if (results.isEmpty()) return;
+        if (results.isEmpty()) return false;
         CbrCaseEntity entity = results.getFirst();
+        if (entity.supersededAt == null) {
+            return false;
+        }
         entity.reinstatedAt = Instant.now();
         entity.supersededAt = null;
         entity.supersedingCaseId = null;
         entity.supersessionReason = null;
+        return true;
+    }
+
+    @Override
+    public List<String> findCaseIds(String tenantId, MemoryDomain domain,
+                                     String caseType, Map<String, CbrFilter> filters) {
+        Objects.requireNonNull(tenantId, "tenantId required");
+        Objects.requireNonNull(domain, "domain required");
+        Objects.requireNonNull(caseType, "caseType required");
+        Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        var entities = em.createQuery(
+                        "SELECT e FROM CbrCaseEntity e WHERE e.tenantId = :t AND e.domain = :d AND e.caseType = :ct AND e.supersededAt IS NULL",
+                        CbrCaseEntity.class)
+                .setParameter("t", tenantId).setParameter("d", domain.name()).setParameter("ct", caseType)
+                .getResultList();
+
+        List<String> result = new ArrayList<>();
+        for (CbrCaseEntity entity : entities) {
+            if (filters.isEmpty() || matchesFilters(reconstruct(entity), filters, schema)) {
+                result.add(entity.caseId);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public int supersedeMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters, String reason) {
+        List<String> ids = findCaseIds(tenantId, domain, caseType, filters);
+        if (ids.isEmpty()) return 0;
+        int count = 0;
+        for (String id : ids) {
+            if (supersede(id, tenantId, null, reason)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    @Transactional
+    public int supersedeAll(Collection<String> caseIds, String tenantId, String reason) {
+        Objects.requireNonNull(caseIds, "caseIds required");
+        Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (supersede(caseId, tenantId, null, reason)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    @Transactional
+    public int reinstateMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters) {
+        Objects.requireNonNull(tenantId, "tenantId required");
+        Objects.requireNonNull(domain, "domain required");
+        Objects.requireNonNull(caseType, "caseType required");
+        Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        var entities = em.createQuery(
+                        "SELECT e FROM CbrCaseEntity e WHERE e.tenantId = :t AND e.domain = :d AND e.caseType = :ct AND e.supersededAt IS NOT NULL",
+                        CbrCaseEntity.class)
+                .setParameter("t", tenantId).setParameter("d", domain.name()).setParameter("ct", caseType)
+                .getResultList();
+
+        int count = 0;
+        for (CbrCaseEntity entity : entities) {
+            if (filters.isEmpty() || matchesFilters(reconstruct(entity), filters, schema)) {
+                if (reinstate(entity.caseId, tenantId)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    @Transactional
+    public int reinstateAll(Collection<String> caseIds, String tenantId) {
+        Objects.requireNonNull(caseIds, "caseIds required");
+        Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (reinstate(caseId, tenantId)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private CbrCase reconstruct(CbrCaseEntity entity) {

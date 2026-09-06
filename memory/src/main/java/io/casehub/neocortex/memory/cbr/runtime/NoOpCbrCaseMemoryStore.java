@@ -13,7 +13,11 @@ import io.casehub.neocortex.memory.cbr.ScoredCbrCase;
 import io.quarkus.arc.DefaultBean;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import io.casehub.neocortex.memory.cbr.CbrFilter;
+
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 @DefaultBean
 @ApplicationScoped
@@ -58,11 +62,14 @@ public class NoOpCbrCaseMemoryStore implements CbrCaseMemoryStore {
     }
 
     @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {}
+    public boolean supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
+        return false;
+    }
 
     @Override
-    public void reinstate(String caseId, String tenantId) {}
-
+    public boolean reinstate(String caseId, String tenantId) {
+        return false;
+    }
 
     @Override
     public SupersessionStatus getSupersessionStatus(String caseId, String tenantId) {
@@ -72,6 +79,34 @@ public class NoOpCbrCaseMemoryStore implements CbrCaseMemoryStore {
     @Override
     public java.util.List<SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) {
         return java.util.List.of();
+    }
+
+    @Override
+    public List<String> findCaseIds(String tenantId, MemoryDomain domain,
+                                     String caseType, Map<String, CbrFilter> filters) {
+        return List.of();
+    }
+
+    @Override
+    public int supersedeMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters, String reason) {
+        return 0;
+    }
+
+    @Override
+    public int supersedeAll(Collection<String> caseIds, String tenantId, String reason) {
+        return 0;
+    }
+
+    @Override
+    public int reinstateMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters) {
+        return 0;
+    }
+
+    @Override
+    public int reinstateAll(Collection<String> caseIds, String tenantId) {
+        return 0;
     }
 
 }

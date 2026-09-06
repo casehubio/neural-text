@@ -110,10 +110,15 @@ class TrustWeightedCbrCaseMemoryStoreTest {
             @Override public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String t) { return 0; }
             @Override public void recordOutcome(String c, String t, CbrOutcome o) {}
             @Override public Integer purge(CbrRetentionPolicy p) { return 0; }
-            @Override public void supersede(String c, String t, String s, String r) {}
-            @Override public void reinstate(String c, String t) {}
+            @Override public boolean supersede(String c, String t, String s, String r) { return false; }
+            @Override public boolean reinstate(String c, String t) { return false; }
             @Override public SupersessionStatus getSupersessionStatus(String caseId, String tenantId) { return SupersessionStatus.NOT_SUPERSEDED; }
             @Override public java.util.List<SupersessionStatus> findSupersededCases(String tenantId, MemoryDomain domain) { return java.util.List.of(); }
+            @Override public java.util.List<String> findCaseIds(String t, MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return java.util.List.of(); }
+            @Override public int supersedeMatching(String t, MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f, String r) { return 0; }
+            @Override public int supersedeAll(java.util.Collection<String> ids, String t, String r) { return 0; }
+            @Override public int reinstateMatching(String t, MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return 0; }
+            @Override public int reinstateAll(java.util.Collection<String> ids, String t) { return 0; }
         };
     }
 }

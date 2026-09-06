@@ -28,9 +28,11 @@ import jakarta.enterprise.inject.Alternative;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -318,36 +320,156 @@ public class InMemoryCbrCaseMemoryStore implements CbrCaseMemoryStore {
     }
 
     @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
-        java.util.Objects.requireNonNull(caseId, "caseId required");
-        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+    public boolean supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
+        Objects.requireNonNull(caseId, "caseId required");
+        Objects.requireNonNull(tenantId, "tenantId required");
         for (int i = 0; i < cases.size(); i++) {
             StoredCase sc = cases.get(i);
             if (caseId.equals(sc.caseId()) && tenantId.equals(sc.tenantId())) {
                 if (sc.supersededAt() != null) {
-                    String newId = supersedingCaseId != null ? supersedingCaseId : sc.supersedingCaseId();
-                    String newReason = reason != null ? reason : sc.supersessionReason();
-                    cases.set(i, sc.withSupersession(sc.supersededAt(), newId, newReason));
-                } else {
-                    cases.set(i, sc.withSupersession(Instant.now(), supersedingCaseId, reason));
+                    return false;
                 }
-                return;
+                cases.set(i, sc.withSupersession(Instant.now(), supersedingCaseId, reason));
+                return true;
             }
         }
+        return false;
     }
 
     @Override
-    public void reinstate(String caseId, String tenantId) {
-        java.util.Objects.requireNonNull(caseId, "caseId required");
-        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+    public boolean reinstate(String caseId, String tenantId) {
+        Objects.requireNonNull(caseId, "caseId required");
+        Objects.requireNonNull(tenantId, "tenantId required");
         for (int i = 0; i < cases.size(); i++) {
             StoredCase sc = cases.get(i);
             if (caseId.equals(sc.caseId()) && tenantId.equals(sc.tenantId())) {
+                if (sc.supersededAt() == null) {
+                    return false;
+                }
                 cases.set(i, sc.withReinstatement(Instant.now()));
-                return;
+                return true;
             }
         }
+        return false;
     }
+
+    @Override
+    public List<String> findCaseIds(String tenantId, MemoryDomain domain,
+                                     String caseType, Map<String, CbrFilter> filters) {
+        Objects.requireNonNull(tenantId, "tenantId required");
+        Objects.requireNonNull(domain, "domain required");
+        Objects.requireNonNull(caseType, "caseType required");
+        Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        List<String> result = new ArrayList<>();
+        for (StoredCase stored : cases) {
+            if (!stored.tenantId().equals(tenantId)) continue;
+            if (!stored.domain().equals(domain)) continue;
+            if (!stored.caseType().equals(caseType)) continue;
+            if (stored.supersededAt() != null) continue;
+            if (!filters.isEmpty() && !matchesFilters(stored.cbrCase(), filters, schema)) continue;
+            result.add(stored.caseId());
+        }
+        return result;
+    }
+
+    @Override
+    public int supersedeMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters, String reason) {
+        Objects.requireNonNull(tenantId, "tenantId required");
+        Objects.requireNonNull(domain, "domain required");
+        Objects.requireNonNull(caseType, "caseType required");
+        Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        int count = 0;
+        for (int i = 0; i < cases.size(); i++) {
+            StoredCase stored = cases.get(i);
+            if (!stored.tenantId().equals(tenantId)) continue;
+            if (!stored.domain().equals(domain)) continue;
+            if (!stored.caseType().equals(caseType)) continue;
+            if (stored.supersededAt() != null) continue;
+            if (!filters.isEmpty() && !matchesFilters(stored.cbrCase(), filters, schema)) continue;
+            cases.set(i, stored.withSupersession(Instant.now(), null, reason));
+            count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int supersedeAll(Collection<String> caseIds, String tenantId, String reason) {
+        Objects.requireNonNull(caseIds, "caseIds required");
+        Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (supersede(caseId, tenantId, null, reason)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public int reinstateMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, CbrFilter> filters) {
+        Objects.requireNonNull(tenantId, "tenantId required");
+        Objects.requireNonNull(domain, "domain required");
+        Objects.requireNonNull(caseType, "caseType required");
+        Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        int count = 0;
+        for (int i = 0; i < cases.size(); i++) {
+            StoredCase stored = cases.get(i);
+            if (!stored.tenantId().equals(tenantId)) continue;
+            if (!stored.domain().equals(domain)) continue;
+            if (!stored.caseType().equals(caseType)) continue;
+            if (stored.supersededAt() == null) continue;
+            if (!filters.isEmpty() && !matchesFilters(stored.cbrCase(), filters, schema)) continue;
+            cases.set(i, stored.withReinstatement(Instant.now()));
+            count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int reinstateAll(Collection<String> caseIds, String tenantId) {
+        Objects.requireNonNull(caseIds, "caseIds required");
+        Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (reinstate(caseId, tenantId)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
 
     @SuppressWarnings("unchecked")
     private boolean matchesFilters(CbrCase storedCase, Map<String, CbrFilter> filters,

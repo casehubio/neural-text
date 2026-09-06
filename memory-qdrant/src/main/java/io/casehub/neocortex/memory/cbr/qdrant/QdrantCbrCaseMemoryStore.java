@@ -686,7 +686,7 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
     }
 
     @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
+    public boolean supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
         java.util.Objects.requireNonNull(caseId, "caseId required");
         java.util.Objects.requireNonNull(tenantId, "tenantId required");
         for (String caseType : schemas.keySet()) {
@@ -703,29 +703,27 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
             if (points.isEmpty()) continue;
 
             var payload = points.getFirst().getPayloadMap();
-            Map<String, Value> updates = new HashMap<>();
-
             Value existing = payload.get("_superseded_at");
             if (existing != null && existing.hasIntegerValue() && existing.getIntegerValue() > 0) {
-                if (supersedingCaseId != null) updates.put("_superseding_case_id", ValueFactory.value(supersedingCaseId));
-                if (reason != null) updates.put("_supersession_reason", ValueFactory.value(reason));
-            } else {
-                updates.put("_superseded_at", ValueFactory.value(Instant.now().toEpochMilli()));
-                if (supersedingCaseId != null) updates.put("_superseding_case_id", ValueFactory.value(supersedingCaseId));
-                if (reason != null) updates.put("_supersession_reason", ValueFactory.value(reason));
+                return false;
             }
 
-            updates.put("_reinstated_at", ValueFactory.value(0L));
-            if (updates.size() == 1) continue;
+            Map<String, Value> updates = new HashMap<>();
+            updates.put("_superseded_at", ValueFactory.value(Instant.now().toEpochMilli()));
+            if (supersedingCaseId != null) updates.put("_superseding_case_id", ValueFactory.value(supersedingCaseId));
+            if (reason != null) updates.put("_supersession_reason", ValueFactory.value(reason));
+
             awaitFuture(collectionManager.client().setPayloadAsync(
                 collection, updates, (PointId) pointId, null, null, null), "setPayload");
             awaitFuture(collectionManager.client().deletePayloadAsync(
                 collection, List.of("_reinstated_at"), (PointId) pointId, null, null, null), "deletePayload");
+            return true;
         }
+        return false;
     }
 
     @Override
-    public void reinstate(String caseId, String tenantId) {
+    public boolean reinstate(String caseId, String tenantId) {
         java.util.Objects.requireNonNull(caseId, "caseId required");
         java.util.Objects.requireNonNull(tenantId, "tenantId required");
         for (String caseType : schemas.keySet()) {
@@ -741,6 +739,12 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
                 "retrieveForReinstate");
             if (points.isEmpty()) continue;
 
+            var payload = points.getFirst().getPayloadMap();
+            Value existing = payload.get("_superseded_at");
+            if (existing == null || !existing.hasIntegerValue() || existing.getIntegerValue() == 0) {
+                return false;
+            }
+
             Map<String, Value> updates = new HashMap<>();
             updates.put("_reinstated_at", ValueFactory.value(Instant.now().toEpochMilli()));
             awaitFuture(collectionManager.client().setPayloadAsync(
@@ -749,7 +753,9 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
                 collection,
                 List.of("_superseded_at", "_superseding_case_id", "_supersession_reason"),
                 (PointId) pointId, null, null, null), "deletePayload");
+            return true;
         }
+        return false;
     }
 
     @Override

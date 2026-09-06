@@ -164,11 +164,16 @@ class ErasureNotificationCbrCaseMemoryStoreTest {
         @Override public Integer eraseByScope(Path scope, String tenantId) { return eraseByScopeReturnValue; }
         @Override public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) {}
         @Override public Integer purge(CbrRetentionPolicy policy) { return purgeReturnValue; }
-        @Override public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {}
-        @Override public void reinstate(String caseId, String tenantId) {}
+        @Override public boolean supersede(String caseId, String tenantId, String supersedingCaseId, String reason) { return false; }
+        @Override public boolean reinstate(String caseId, String tenantId) { return false; }
 
         @Override public io.casehub.neocortex.memory.cbr.SupersessionStatus getSupersessionStatus(String caseId, String tenantId) { return io.casehub.neocortex.memory.cbr.SupersessionStatus.NOT_SUPERSEDED; }
         @Override public java.util.List<io.casehub.neocortex.memory.cbr.SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) { return java.util.List.of(); }
+        @Override public java.util.List<String> findCaseIds(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return java.util.List.of(); }
+        @Override public int supersedeMatching(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f, String r) { return 0; }
+        @Override public int supersedeAll(java.util.Collection<String> ids, String t, String r) { return 0; }
+        @Override public int reinstateMatching(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return 0; }
+        @Override public int reinstateAll(java.util.Collection<String> ids, String t) { return 0; }
 
     }
 }

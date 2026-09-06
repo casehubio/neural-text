@@ -160,10 +160,15 @@ class TrackingCbrCaseMemoryStoreTest {
             @Override public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String t) { return 0; }
             @Override public void recordOutcome(String c, String t, CbrOutcome o) {}
             @Override public Integer purge(io.casehub.neocortex.memory.cbr.CbrRetentionPolicy p) { return 0; }
-            @Override public void supersede(String c, String t, String s, String r) {}
-            @Override public void reinstate(String c, String t) {}
+            @Override public boolean supersede(String c, String t, String s, String r) { return false; }
+            @Override public boolean reinstate(String c, String t) { return false; }
         @Override public io.casehub.neocortex.memory.cbr.SupersessionStatus getSupersessionStatus(String caseId, String tenantId) { return io.casehub.neocortex.memory.cbr.SupersessionStatus.NOT_SUPERSEDED; }
         @Override public java.util.List<io.casehub.neocortex.memory.cbr.SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) { return java.util.List.of(); }
+        @Override public java.util.List<String> findCaseIds(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return java.util.List.of(); }
+        @Override public int supersedeMatching(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f, String r) { return 0; }
+        @Override public int supersedeAll(java.util.Collection<String> ids, String t, String r) { return 0; }
+        @Override public int reinstateMatching(String t, io.casehub.neocortex.memory.MemoryDomain d, String ct, java.util.Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> f) { return 0; }
+        @Override public int reinstateAll(java.util.Collection<String> ids, String t) { return 0; }
 
         };
     }

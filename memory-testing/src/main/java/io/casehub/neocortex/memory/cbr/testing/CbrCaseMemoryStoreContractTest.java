@@ -2455,7 +2455,7 @@ public abstract class CbrCaseMemoryStoreContractTest {
     void supersede_excludesFromRetrieval() {
         registerSupersessionSchema();
         storeSupersessionCase("sup-c1");
-        store().supersede("sup-c1", TENANT, null, null);
+        assertThat(store().supersede("sup-c1", TENANT, null, null)).isTrue();
         assertThat(querySupersession()).isEmpty();
     }
 
@@ -2463,35 +2463,32 @@ public abstract class CbrCaseMemoryStoreContractTest {
     void reinstate_restoresRetrievalVisibility() {
         registerSupersessionSchema();
         storeSupersessionCase("sup-c2");
-        store().supersede("sup-c2", TENANT, null, "overturned");
-        store().reinstate("sup-c2", TENANT);
+        assertThat(store().supersede("sup-c2", TENANT, null, "overturned")).isTrue();
+        assertThat(store().reinstate("sup-c2", TENANT)).isTrue();
         assertThat(querySupersession()).hasSize(1);
     }
 
     @Test
-    void supersede_alreadySuperseded_noThrow() {
+    void supersede_alreadySuperseded_returnsFalse() {
         registerSupersessionSchema();
         storeSupersessionCase("sup-c3");
-        store().supersede("sup-c3", TENANT, null, "first");
-        assertThatCode(() -> store().supersede("sup-c3", TENANT, "replacement", "second"))
-                .doesNotThrowAnyException();
+        assertThat(store().supersede("sup-c3", TENANT, null, "first")).isTrue();
+        assertThat(store().supersede("sup-c3", TENANT, "replacement", "second")).isFalse();
         assertThat(querySupersession()).isEmpty();
     }
 
     @Test
-    void reinstate_idempotent() {
+    void reinstate_notSuperseded_returnsFalse() {
         registerSupersessionSchema();
         storeSupersessionCase("sup-c4");
-        assertThatCode(() -> store().reinstate("sup-c4", TENANT))
-                .doesNotThrowAnyException();
+        assertThat(store().reinstate("sup-c4", TENANT)).isFalse();
         assertThat(querySupersession()).hasSize(1);
     }
 
     @Test
-    void supersede_nonExistentCase_noOp() {
+    void supersede_nonExistentCase_returnsFalse() {
         registerSupersessionSchema();
-        assertThatCode(() -> store().supersede("nonexistent", TENANT, null, null))
-                .doesNotThrowAnyException();
+        assertThat(store().supersede("nonexistent", TENANT, null, null)).isFalse();
     }
 
     @Test
@@ -2793,5 +2790,193 @@ public abstract class CbrCaseMemoryStoreContractTest {
         assertThat(superseded).hasSize(1);
         assertThat(superseded.getFirst().caseId()).isEqualTo("sup-find-1");
         assertThat(superseded.getFirst().superseded()).isTrue();
+    }
+
+    // ── Bulk Supersession ────────────────────────────────────
+
+    private static final String BULK_TYPE = "regime-case";
+
+    private void registerBulkSchema() {
+        store().registerSchema(CbrFeatureSchema.of(BULK_TYPE,
+                FeatureField.categorical("regime"),
+                FeatureField.numeric("confidence", 0, 1)));
+    }
+
+    private void storeBulkCase(String caseId, String regime) {
+        store().store(new FeatureVectorCbrCase("p", "s", null, null,
+                Map.of("regime", string(regime), "confidence", number(0.8)), null, null),
+                BULK_TYPE, ENTITY, CBR, TENANT, caseId, Path.root());
+    }
+
+    private List<ScoredCbrCase<FeatureVectorCbrCase>> queryBulk(String regime) {
+        return store().retrieveSimilar(
+                CbrQuery.of(TENANT, CBR, Path.root(), BULK_TYPE,
+                        Map.of("regime", string(regime), "confidence", number(0.8)), 10),
+                FeatureVectorCbrCase.class);
+    }
+
+    @Test
+    void supersedeMatching_filtersByCaseType() {
+        registerBulkSchema();
+        storeBulkCase("bulk-c1", "TRENDING");
+        storeBulkCase("bulk-c2", "VOLATILE");
+
+        int count = store().supersedeMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")), "regime changed");
+
+        assertThat(count).isEqualTo(1);
+        assertThat(store().getSupersessionStatus("bulk-c1", TENANT).superseded()).isTrue();
+        assertThat(store().getSupersessionStatus("bulk-c1", TENANT).reason()).isEqualTo("regime changed");
+        assertThat(store().getSupersessionStatus("bulk-c2", TENANT).superseded()).isFalse();
+    }
+
+    @Test
+    void supersedeMatching_returnsCount() {
+        registerBulkSchema();
+        storeBulkCase("bulk-mc1", "TRENDING");
+        storeBulkCase("bulk-mc2", "TRENDING");
+        storeBulkCase("bulk-mc3", "VOLATILE");
+
+        int count = store().supersedeMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")), "regime shift");
+
+        assertThat(count).isEqualTo(2);
+    }
+
+    @Test
+    void supersedeMatching_excludesAlreadySuperseded() {
+        registerBulkSchema();
+        storeBulkCase("bulk-as1", "TRENDING");
+        store().supersede("bulk-as1", TENANT, null, "first");
+
+        int count = store().supersedeMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")), "second");
+        assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    void supersedeMatching_excludedFromRetrieval() {
+        registerBulkSchema();
+        storeBulkCase("bulk-er1", "TRENDING");
+
+        store().supersedeMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")), "regime changed");
+
+        assertThat(queryBulk("TRENDING")).isEmpty();
+    }
+
+    @Test
+    void supersedeAll_byIds() {
+        registerBulkSchema();
+        storeBulkCase("bulk-ai1", "TRENDING");
+        storeBulkCase("bulk-ai2", "TRENDING");
+
+        int count = store().supersedeAll(List.of("bulk-ai1", "bulk-ai2", "nonexistent"), TENANT, "batch");
+
+        assertThat(count).isEqualTo(2);
+        assertThat(store().getSupersessionStatus("bulk-ai1", TENANT).superseded()).isTrue();
+        assertThat(store().getSupersessionStatus("bulk-ai2", TENANT).superseded()).isTrue();
+    }
+
+    @Test
+    void supersedeAll_alreadySuperseded_noDoubleCount() {
+        registerBulkSchema();
+        storeBulkCase("bulk-dc1", "TRENDING");
+        store().supersede("bulk-dc1", TENANT, null, "first");
+
+        int count = store().supersedeAll(List.of("bulk-dc1"), TENANT, "second");
+        assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    void reinstateMatching_restoresRetrieval() {
+        registerBulkSchema();
+        storeBulkCase("bulk-rm1", "TRENDING");
+        storeBulkCase("bulk-rm2", "TRENDING");
+        store().supersedeMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")), "regime changed");
+
+        int count = store().reinstateMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")));
+
+        assertThat(count).isEqualTo(2);
+        assertThat(queryBulk("TRENDING")).hasSize(2);
+    }
+
+    @Test
+    void reinstateMatching_onlyAffectsSuperseded() {
+        registerBulkSchema();
+        storeBulkCase("bulk-oas1", "TRENDING");
+        storeBulkCase("bulk-oas2", "TRENDING");
+        store().supersede("bulk-oas1", TENANT, null, "first");
+
+        int count = store().reinstateMatching(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")));
+
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void reinstateAll_byIds() {
+        registerBulkSchema();
+        storeBulkCase("bulk-ra1", "TRENDING");
+        storeBulkCase("bulk-ra2", "TRENDING");
+        store().supersede("bulk-ra1", TENANT, null, "first");
+        store().supersede("bulk-ra2", TENANT, null, "first");
+
+        int count = store().reinstateAll(List.of("bulk-ra1", "bulk-ra2"), TENANT);
+
+        assertThat(count).isEqualTo(2);
+        assertThat(queryBulk("TRENDING")).hasSize(2);
+    }
+
+    @Test
+    void reinstateAll_onlyAffectsSuperseded() {
+        registerBulkSchema();
+        storeBulkCase("bulk-ras1", "TRENDING");
+        storeBulkCase("bulk-ras2", "TRENDING");
+        store().supersede("bulk-ras1", TENANT, null, "first");
+
+        int count = store().reinstateAll(List.of("bulk-ras1", "bulk-ras2"), TENANT);
+
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void findCaseIds_filterByFeature() {
+        registerBulkSchema();
+        storeBulkCase("bulk-fc1", "TRENDING");
+        storeBulkCase("bulk-fc2", "VOLATILE");
+
+        var ids = store().findCaseIds(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")));
+
+        assertThat(ids).containsExactly("bulk-fc1");
+    }
+
+    @Test
+    void findCaseIds_excludesSuperseded() {
+        registerBulkSchema();
+        storeBulkCase("bulk-fs1", "TRENDING");
+        storeBulkCase("bulk-fs2", "TRENDING");
+        store().supersede("bulk-fs1", TENANT, null, "gone");
+
+        var ids = store().findCaseIds(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("TRENDING")));
+
+        assertThat(ids).containsExactly("bulk-fs2");
+    }
+
+    @Test
+    void findCaseIds_filterByCategoricalField() {
+        registerBulkSchema();
+        storeBulkCase("bulk-cat1", "TRENDING");
+        storeBulkCase("bulk-cat2", "VOLATILE");
+        storeBulkCase("bulk-cat3", "TRENDING");
+
+        var ids = store().findCaseIds(TENANT, CBR, BULK_TYPE,
+                Map.of("regime", CbrFilter.contains("VOLATILE")));
+
+        assertThat(ids).containsExactly("bulk-cat2");
     }
 }
