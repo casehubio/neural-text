@@ -40,6 +40,7 @@ import io.qdrant.client.ValueFactory;
 import io.qdrant.client.WithPayloadSelectorFactory;
 import io.qdrant.client.grpc.Common.Filter;
 import io.qdrant.client.grpc.Common.PointId;
+import io.qdrant.client.grpc.Common.Range;
 import io.qdrant.client.grpc.JsonWithInt.Value;
 import io.qdrant.client.grpc.Points.PointStruct;
 import io.qdrant.client.grpc.Points.ScoredPoint;
@@ -756,6 +757,192 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public List<String> findCaseIds(String tenantId, MemoryDomain domain,
+                                     String caseType, Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> filters) {
+        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+        java.util.Objects.requireNonNull(domain, "domain required");
+        java.util.Objects.requireNonNull(caseType, "caseType required");
+        java.util.Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        String collection = collectionManager.collectionName(caseType);
+        boolean exists = awaitFuture(
+                collectionManager.client().collectionExistsAsync(collection), "collectionExists");
+        if (!exists) return List.of();
+
+        Filter.Builder builder = Filter.newBuilder()
+                .addMust(ConditionFactory.matchKeyword("tenantId", tenantId))
+                .addMust(ConditionFactory.matchKeyword("domain", domain.name()))
+                .addMust(ConditionFactory.matchKeyword("caseType", caseType))
+                .addMustNot(ConditionFactory.range("_superseded_at",
+                        Range.newBuilder().setGt(0).build()));
+
+        Filter filter = CbrQueryTranslator.applyStructuralFilters(builder.build(), filters, schema);
+
+        var scrollResult = awaitFuture(collectionManager.client().scrollAsync(
+                io.qdrant.client.grpc.Points.ScrollPoints.newBuilder()
+                        .setCollectionName(collection)
+                        .setFilter(filter)
+                        .setLimit(10000)
+                        .setWithPayload(WithPayloadSelectorFactory.include(List.of("caseId")))
+                        .build()), "scrollForFindCaseIds");
+
+        List<String> result = new ArrayList<>();
+        for (var point : scrollResult.getResultList()) {
+            String caseId = extractString(point.getPayloadMap(), "caseId");
+            if (caseId != null) result.add(caseId);
+        }
+        if (result.size() >= 10000) {
+            throw new IllegalStateException("findCaseIds exceeded 10,000 results — narrow filters");
+        }
+        return result;
+    }
+
+    @Override
+    public int supersedeMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> filters, String reason) {
+        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+        java.util.Objects.requireNonNull(domain, "domain required");
+        java.util.Objects.requireNonNull(caseType, "caseType required");
+        java.util.Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        String collection = collectionManager.collectionName(caseType);
+        boolean exists = awaitFuture(
+                collectionManager.client().collectionExistsAsync(collection), "collectionExists");
+        if (!exists) return 0;
+
+        Filter.Builder builder = Filter.newBuilder()
+                .addMust(ConditionFactory.matchKeyword("tenantId", tenantId))
+                .addMust(ConditionFactory.matchKeyword("domain", domain.name()))
+                .addMust(ConditionFactory.matchKeyword("caseType", caseType))
+                .addMustNot(ConditionFactory.range("_superseded_at",
+                        Range.newBuilder().setGt(0).build()));
+
+        Filter filter = CbrQueryTranslator.applyStructuralFilters(builder.build(), filters, schema);
+
+        var scrollResult = awaitFuture(collectionManager.client().scrollAsync(
+                io.qdrant.client.grpc.Points.ScrollPoints.newBuilder()
+                        .setCollectionName(collection)
+                        .setFilter(filter)
+                        .setLimit(10000)
+                        .setWithPayload(WithPayloadSelectorFactory.include(List.of("caseId")))
+                        .build()), "scrollForSupersedeMatching");
+
+        int count = 0;
+        Instant now = Instant.now();
+        for (var point : scrollResult.getResultList()) {
+            Map<String, Value> updates = new HashMap<>();
+            updates.put("_superseded_at", ValueFactory.value(now.toEpochMilli()));
+            if (reason != null) updates.put("_supersession_reason", ValueFactory.value(reason));
+
+            awaitFuture(collectionManager.client().setPayloadAsync(
+                    collection, updates, (PointId) point.getId(), null, null, null), "setPayload");
+            awaitFuture(collectionManager.client().deletePayloadAsync(
+                    collection, List.of("_reinstated_at"),
+                    (PointId) point.getId(), null, null, null), "deletePayload");
+            count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int supersedeAll(java.util.Collection<String> caseIds, String tenantId, String reason) {
+        java.util.Objects.requireNonNull(caseIds, "caseIds required");
+        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (supersede(caseId, tenantId, null, reason)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public int reinstateMatching(String tenantId, MemoryDomain domain, String caseType,
+                                  Map<String, io.casehub.neocortex.memory.cbr.CbrFilter> filters) {
+        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+        java.util.Objects.requireNonNull(domain, "domain required");
+        java.util.Objects.requireNonNull(caseType, "caseType required");
+        java.util.Objects.requireNonNull(filters, "filters required");
+
+        CbrFeatureSchema schema = schemas.get(caseType);
+        if (!filters.isEmpty()) {
+            if (schema == null) {
+                throw new IllegalStateException(
+                        "Cannot apply filters: no schema registered for caseType '" + caseType + "'");
+            }
+            CbrFeatureValidator.validateFilters(filters, schema);
+        }
+
+        String collection = collectionManager.collectionName(caseType);
+        boolean exists = awaitFuture(
+                collectionManager.client().collectionExistsAsync(collection), "collectionExists");
+        if (!exists) return 0;
+
+        Filter.Builder builder = Filter.newBuilder()
+                .addMust(ConditionFactory.matchKeyword("tenantId", tenantId))
+                .addMust(ConditionFactory.matchKeyword("domain", domain.name()))
+                .addMust(ConditionFactory.matchKeyword("caseType", caseType))
+                .addMust(ConditionFactory.range("_superseded_at",
+                        Range.newBuilder().setGt(0).build()));
+
+        Filter filter = CbrQueryTranslator.applyStructuralFilters(builder.build(), filters, schema);
+
+        var scrollResult = awaitFuture(collectionManager.client().scrollAsync(
+                io.qdrant.client.grpc.Points.ScrollPoints.newBuilder()
+                        .setCollectionName(collection)
+                        .setFilter(filter)
+                        .setLimit(10000)
+                        .setWithPayload(WithPayloadSelectorFactory.include(List.of("caseId")))
+                        .build()), "scrollForReinstateMatching");
+
+        int count = 0;
+        Instant now = Instant.now();
+        for (var point : scrollResult.getResultList()) {
+            Map<String, Value> updates = new HashMap<>();
+            updates.put("_reinstated_at", ValueFactory.value(now.toEpochMilli()));
+            awaitFuture(collectionManager.client().setPayloadAsync(
+                    collection, updates, (PointId) point.getId(), null, null, null), "setPayload");
+            awaitFuture(collectionManager.client().deletePayloadAsync(
+                    collection, List.of("_superseded_at", "_superseding_case_id", "_supersession_reason"),
+                    (PointId) point.getId(), null, null, null), "deletePayload");
+            count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int reinstateAll(java.util.Collection<String> caseIds, String tenantId) {
+        java.util.Objects.requireNonNull(caseIds, "caseIds required");
+        java.util.Objects.requireNonNull(tenantId, "tenantId required");
+        int count = 0;
+        for (String caseId : caseIds) {
+            if (reinstate(caseId, tenantId)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     @Override
