@@ -848,6 +848,10 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
                         .setWithPayload(WithPayloadSelectorFactory.include(List.of("caseId")))
                         .build()), "scrollForSupersedeMatching");
 
+        if (scrollResult.getResultCount() >= 10000) {
+            throw new IllegalStateException("supersedeMatching exceeded 10,000 results — narrow filters");
+        }
+
         int count = 0;
         Instant now = Instant.now();
         for (var point : scrollResult.getResultList()) {
@@ -916,6 +920,10 @@ public class QdrantCbrCaseMemoryStore implements CbrCaseMemoryStore {
                         .setLimit(10000)
                         .setWithPayload(WithPayloadSelectorFactory.include(List.of("caseId")))
                         .build()), "scrollForReinstateMatching");
+
+        if (scrollResult.getResultCount() >= 10000) {
+            throw new IllegalStateException("reinstateMatching exceeded 10,000 results — narrow filters");
+        }
 
         int count = 0;
         Instant now = Instant.now();
