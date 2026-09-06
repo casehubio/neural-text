@@ -1,16 +1,13 @@
 package io.casehub.neocortex.memory.cbr.runtime;
 
-import io.casehub.neocortex.memory.EraseRequest;
 import io.casehub.neocortex.memory.MemoryDomain;
 import io.casehub.neocortex.memory.cbr.CbrCase;
 import io.casehub.neocortex.memory.cbr.CbrCaseMemoryStore;
+import io.casehub.neocortex.memory.cbr.DelegatingCbrCaseMemoryStore;
 import io.casehub.neocortex.memory.cbr.CbrFeatureSchema;
-import io.casehub.neocortex.memory.cbr.CbrOutcome;
 import io.casehub.neocortex.memory.cbr.CbrQuery;
-import io.casehub.neocortex.memory.cbr.CbrRetentionPolicy;
 import io.casehub.neocortex.memory.cbr.FeatureValue;
 import io.casehub.neocortex.memory.cbr.ScoredCbrCase;
-import io.casehub.neocortex.memory.cbr.SupersessionStatus;
 import io.casehub.neocortex.memory.cbr.TrendAnalyzer;
 import jakarta.annotation.Priority;
 import jakarta.decorator.Decorator;
@@ -24,14 +21,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Decorator
 @Priority(90)
-public class TrendEnrichmentCbrCaseMemoryStore implements CbrCaseMemoryStore {
+public class TrendEnrichmentCbrCaseMemoryStore extends DelegatingCbrCaseMemoryStore {
 
-    private final CbrCaseMemoryStore delegate;
     private final ConcurrentHashMap<String, CbrFeatureSchema> expandedSchemas = new ConcurrentHashMap<>();
 
     @Inject
     TrendEnrichmentCbrCaseMemoryStore(@Delegate @Any CbrCaseMemoryStore delegate) {
-        this.delegate = delegate;
+        super(delegate);
     }
 
     @Override
@@ -65,57 +61,6 @@ public class TrendEnrichmentCbrCaseMemoryStore implements CbrCaseMemoryStore {
             }
         }
         return delegate.retrieveSimilar(query, caseClass);
-    }
-
-    @Override
-    public Integer erase(EraseRequest request) {
-        return delegate.erase(request);
-    }
-
-    @Override
-    public Integer eraseEntity(String entityId, String tenantId) {
-        return delegate.eraseEntity(entityId, tenantId);
-    }
-
-    @Override
-    public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String tenantId) {return delegate.eraseByScope(scope, tenantId);}
-
-
-    @Override
-    public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) {
-        delegate.recordOutcome(caseId, tenantId, outcome);
-    }
-
-    @Override
-    public Integer purge(CbrRetentionPolicy policy) {
-        return delegate.purge(policy);
-    }
-
-    @Override
-    public java.util.Set<String> discoverTenants(io.casehub.neocortex.memory.MemoryDomain domain) {return delegate.discoverTenants(domain);}
-
-    @Override
-    public io.casehub.neocortex.memory.cbr.CbrScanResult scan(io.casehub.neocortex.memory.cbr.CbrScanRequest request)                            {return delegate.scan(request);}
-
-
-    @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
-        delegate.supersede(caseId, tenantId, supersedingCaseId, reason);
-    }
-
-    @Override
-    public void reinstate(String caseId, String tenantId) {
-        delegate.reinstate(caseId, tenantId);
-    }
-
-    @Override
-    public SupersessionStatus getSupersessionStatus(String caseId, String tenantId) {
-        return delegate.getSupersessionStatus(caseId, tenantId);
-    }
-
-    @Override
-    public java.util.List<SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) {
-        return delegate.findSupersededCases(tenantId, domain);
     }
 
 }

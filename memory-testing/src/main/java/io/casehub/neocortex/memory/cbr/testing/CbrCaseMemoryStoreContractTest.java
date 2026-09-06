@@ -1016,7 +1016,7 @@ public abstract class CbrCaseMemoryStoreContractTest {
     void structuredFields_validation_wrongFilterTypeOnField() {
         registerStructuredSchema();
         var q = CbrQuery.of(TENANT, CBR, Path.root(), "game", Map.of(), 10)
-                        .withFilter("posture", CbrFilter.contains("A"));
+                        .withFilter("score", CbrFilter.contains("A"));
         assertThatThrownBy(() -> store().retrieveSimilar(q, FeatureVectorCbrCase.class))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -1136,7 +1136,7 @@ public abstract class CbrCaseMemoryStoreContractTest {
     void structuredFields_notContains_validation_requiresCategoricalList() {
         registerStructuredSchema();
         var q = CbrQuery.of(TENANT, CBR, Path.root(), "game", Map.of(), 10)
-                        .withFilter("posture", CbrFilter.notContains("X"));
+                        .withFilter("score", CbrFilter.notContains("X"));
         assertThatThrownBy(() -> store().retrieveSimilar(q, FeatureVectorCbrCase.class))
                 .isInstanceOf(IllegalArgumentException.class);
     }

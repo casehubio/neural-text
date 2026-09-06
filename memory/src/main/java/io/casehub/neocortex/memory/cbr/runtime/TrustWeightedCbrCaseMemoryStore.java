@@ -1,7 +1,5 @@
 package io.casehub.neocortex.memory.cbr.runtime;
 
-import io.casehub.neocortex.memory.EraseRequest;
-import io.casehub.neocortex.memory.MemoryDomain;
 import io.casehub.neocortex.memory.cbr.*;
 import io.quarkus.arc.properties.IfBuildProperty;
 import jakarta.annotation.Priority;
@@ -16,9 +14,8 @@ import java.util.*;
 @Decorator
 @Priority(60)
 @IfBuildProperty(name = "casehub.cbr.trust-weighting.enabled", stringValue = "true")
-public class TrustWeightedCbrCaseMemoryStore implements CbrCaseMemoryStore {
+public class TrustWeightedCbrCaseMemoryStore extends DelegatingCbrCaseMemoryStore {
 
-    private final CbrCaseMemoryStore delegate;
     private final TrustWeightingFunction weightingFunction;
     private final AgentTrustProvider trustProvider;
 
@@ -33,19 +30,9 @@ public class TrustWeightedCbrCaseMemoryStore implements CbrCaseMemoryStore {
     TrustWeightedCbrCaseMemoryStore(CbrCaseMemoryStore delegate,
                                      TrustWeightingFunction weightingFunction,
                                      AgentTrustProvider trustProvider) {
-        this.delegate = delegate;
+        super(delegate);
         this.weightingFunction = weightingFunction;
         this.trustProvider = trustProvider;
-    }
-
-    @Override
-    public void registerSchema(CbrFeatureSchema schema) { delegate.registerSchema(schema); }
-
-    @Override
-    public String store(CbrCase cbrCase, String caseType, String entityId,
-                        MemoryDomain domain, String tenantId, String caseId,
-                        io.casehub.platform.api.path.Path scope) {
-        return delegate.store(cbrCase, caseType, entityId, domain, tenantId, caseId, scope);
     }
 
     @Override
@@ -84,15 +71,4 @@ public class TrustWeightedCbrCaseMemoryStore implements CbrCaseMemoryStore {
         return OptionalDouble.of(current.getAsDouble() - cbrCase.trustScore());
     }
 
-    @Override public Integer erase(EraseRequest request) { return delegate.erase(request); }
-    @Override public Integer eraseEntity(String entityId, String tenantId) { return delegate.eraseEntity(entityId, tenantId); }
-    @Override public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String tenantId) { return delegate.eraseByScope(scope, tenantId); }
-    @Override public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) { delegate.recordOutcome(caseId, tenantId, outcome); }
-    @Override public Integer purge(CbrRetentionPolicy policy) { return delegate.purge(policy); }
-    @Override public java.util.Set<String> discoverTenants(MemoryDomain domain) { return delegate.discoverTenants(domain); }
-    @Override public CbrScanResult scan(CbrScanRequest request) { return delegate.scan(request); }
-    @Override public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) { delegate.supersede(caseId, tenantId, supersedingCaseId, reason); }
-    @Override public void reinstate(String caseId, String tenantId) { delegate.reinstate(caseId, tenantId); }
-    @Override public SupersessionStatus getSupersessionStatus(String caseId, String tenantId) { return delegate.getSupersessionStatus(caseId, tenantId); }
-    @Override public List<SupersessionStatus> findSupersededCases(String tenantId, MemoryDomain domain) { return delegate.findSupersededCases(tenantId, domain); }
 }

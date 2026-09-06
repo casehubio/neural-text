@@ -138,11 +138,11 @@ public final class CbrFeatureValidator {
 
     private static void validateSingleFilter(String name, CbrFilter filter, FeatureField field) {
         switch (filter) {
-            case CbrFilter.Contains c -> requireCategoricalList(name, field);
-            case CbrFilter.ContainsAll ca -> requireCategoricalList(name, field);
-            case CbrFilter.ContainsAny ca -> requireCategoricalList(name, field);
-            case CbrFilter.NotContains nc -> requireCategoricalList(name, field);
-            case CbrFilter.NotContainsAny nca -> requireCategoricalList(name, field);
+            case CbrFilter.Contains c -> requireCategorical(name, field);
+            case CbrFilter.ContainsAll ca -> requireCategorical(name, field);
+            case CbrFilter.ContainsAny ca -> requireCategorical(name, field);
+            case CbrFilter.NotContains nc -> requireCategorical(name, field);
+            case CbrFilter.NotContainsAny nca -> requireCategorical(name, field);
             case CbrFilter.ContainsRange cr -> requireNumericList(name, field);
             case CbrFilter.HasMatch hm -> {
                 if (!(field instanceof FeatureField.NestedObject) && !(field instanceof FeatureField.ObjectList)) {
@@ -206,14 +206,14 @@ public final class CbrFeatureValidator {
         }
     }
 
-    private static void requireCategoricalList(String name, FeatureField field) {
+    private static void requireCategorical(String name, FeatureField field) {
         if (field instanceof FeatureField.TimeSeries || field instanceof FeatureField.DiscreteSequence)
             throw new IllegalArgumentException(
                 "Temporal field '" + name + "' does not support filters");
-        if (!(field instanceof FeatureField.CategoricalList))
+        if (!(field instanceof FeatureField.CategoricalList) && !(field instanceof FeatureField.Categorical))
             throw new IllegalArgumentException(
                 "Contains/ContainsAll/ContainsAny filter on '" + name
-                + "' requires CategoricalList field, got: " + field.getClass().getSimpleName());
+                + "' requires Categorical or CategoricalList field, got: " + field.getClass().getSimpleName());
     }
 
     private static void requireNumericList(String name, FeatureField field) {

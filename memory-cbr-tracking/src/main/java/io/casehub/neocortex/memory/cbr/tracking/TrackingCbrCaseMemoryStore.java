@@ -1,13 +1,9 @@
 package io.casehub.neocortex.memory.cbr.tracking;
 
-import io.casehub.neocortex.memory.EraseRequest;
-import io.casehub.neocortex.memory.MemoryDomain;
 import io.casehub.neocortex.memory.cbr.CbrCase;
 import io.casehub.neocortex.memory.cbr.CbrCaseMemoryStore;
-import io.casehub.neocortex.memory.cbr.CbrFeatureSchema;
-import io.casehub.neocortex.memory.cbr.CbrOutcome;
+import io.casehub.neocortex.memory.cbr.DelegatingCbrCaseMemoryStore;
 import io.casehub.neocortex.memory.cbr.CbrQuery;
-import io.casehub.neocortex.memory.cbr.CbrRetentionPolicy;
 import io.casehub.neocortex.memory.cbr.CbrRetrievalRecorded;
 import io.casehub.neocortex.memory.cbr.CbrRetrievalTrace;
 import io.casehub.neocortex.memory.cbr.CbrRetrievalTracker;
@@ -27,11 +23,10 @@ import java.util.function.Consumer;
 @Decorator
 @Priority(50)
 @IfBuildProperty(name = "casehub.cbr.tracking.enabled", stringValue = "true")
-public class TrackingCbrCaseMemoryStore implements CbrCaseMemoryStore {
+public class TrackingCbrCaseMemoryStore extends DelegatingCbrCaseMemoryStore {
 
     private static final Logger LOG = Logger.getLogger(TrackingCbrCaseMemoryStore.class);
 
-    private final CbrCaseMemoryStore delegate;
     private final CbrRetrievalTracker tracker;
     private final Consumer<CbrRetrievalRecorded> eventSink;
 
@@ -45,20 +40,9 @@ public class TrackingCbrCaseMemoryStore implements CbrCaseMemoryStore {
     TrackingCbrCaseMemoryStore(CbrCaseMemoryStore delegate,
                                 CbrRetrievalTracker tracker,
                                 Consumer<CbrRetrievalRecorded> eventSink) {
-        this.delegate = delegate;
+        super(delegate);
         this.tracker = tracker;
         this.eventSink = eventSink;
-    }
-
-    @Override
-    public void registerSchema(CbrFeatureSchema schema) {
-        delegate.registerSchema(schema);
-    }
-
-    @Override
-    public String store(CbrCase cbrCase, String caseType, String entityId,
-                        MemoryDomain domain, String tenantId, String caseId, io.casehub.platform.api.path.Path scope) {
-        return delegate.store(cbrCase, caseType, entityId, domain, tenantId, caseId, scope);
     }
 
     @Override
@@ -89,57 +73,5 @@ public class TrackingCbrCaseMemoryStore implements CbrCaseMemoryStore {
         return "stable";
     }
 
-
-    @Override
-    public Integer erase(EraseRequest request) {
-        return delegate.erase(request);
-    }
-
-    @Override
-    public Integer eraseEntity(String entityId, String tenantId) {
-        return delegate.eraseEntity(entityId, tenantId);
-    }
-
-    @Override
-    public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String tenantId) {return delegate.eraseByScope(scope, tenantId);}
-
-
-    @Override
-    public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) {
-        delegate.recordOutcome(caseId, tenantId, outcome);
-    }
-
-    @Override
-    public Integer purge(CbrRetentionPolicy policy) {
-        return delegate.purge(policy);
-    }
-
-    @Override
-    public java.util.Set<String> discoverTenants(io.casehub.neocortex.memory.MemoryDomain domain)                                      {return delegate.discoverTenants(domain);}
-
-    @Override
-    public io.casehub.neocortex.memory.cbr.CbrScanResult scan(io.casehub.neocortex.memory.cbr.CbrScanRequest request) {return delegate.scan(request);}
-
-
-    @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
-        delegate.supersede(caseId, tenantId, supersedingCaseId, reason);
-    }
-
-    @Override
-    public void reinstate(String caseId, String tenantId) {
-        delegate.reinstate(caseId, tenantId);
-    }
-
-
-    @Override
-    public io.casehub.neocortex.memory.cbr.SupersessionStatus getSupersessionStatus(String caseId, String tenantId) {
-        return delegate.getSupersessionStatus(caseId, tenantId);
-    }
-
-    @Override
-    public java.util.List<io.casehub.neocortex.memory.cbr.SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) {
-        return delegate.findSupersededCases(tenantId, domain);
-    }
 
 }

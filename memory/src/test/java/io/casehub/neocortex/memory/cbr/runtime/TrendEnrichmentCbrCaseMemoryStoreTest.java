@@ -122,13 +122,6 @@ class TrendEnrichmentCbrCaseMemoryStoreTest {
         assertThat(capturedCase.get()).isSameAs(cbrCase);
     }
 
-    @Test
-    void erase_passesThrough() {
-        var delegate = stubDelegate(null, null, null);
-        var decorator = new TrendEnrichmentCbrCaseMemoryStore(delegate);
-        assertThat(decorator.erase(new EraseRequest("t1", CBR, "clinical", "e1"))).isEqualTo(0);
-    }
-
     @SuppressWarnings("unchecked")
     private CbrCaseMemoryStore stubDelegate(AtomicReference<CbrFeatureSchema> capturedSchema,
                                             AtomicReference<CbrCase> capturedCase,

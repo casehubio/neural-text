@@ -368,9 +368,11 @@ public class InMemoryCbrCaseMemoryStore implements CbrCaseMemoryStore {
 
     private boolean matchesSingleFilter(FeatureValue storedValue, CbrFilter filter, FeatureField field) {
         return switch (filter) {
-            case CbrFilter.Contains c -> storedValue instanceof FeatureValue.StringListVal sl && sl.values().contains(c.value());
+            case CbrFilter.Contains c -> (storedValue instanceof FeatureValue.StringListVal sl && sl.values().contains(c.value()))
+                    || (storedValue instanceof FeatureValue.StringVal sv && sv.value().equals(c.value()));
             case CbrFilter.ContainsAll ca -> storedValue instanceof FeatureValue.StringListVal sl && sl.values().containsAll(ca.values());
-            case CbrFilter.ContainsAny ca -> storedValue instanceof FeatureValue.StringListVal sl && ca.values().stream().anyMatch(sl.values()::contains);
+            case CbrFilter.ContainsAny ca -> (storedValue instanceof FeatureValue.StringListVal sl && ca.values().stream().anyMatch(sl.values()::contains))
+                    || (storedValue instanceof FeatureValue.StringVal sv && ca.values().contains(sv.value()));
             case CbrFilter.NotContains nc -> storedValue instanceof FeatureValue.StringListVal sl && !sl.values().contains(nc.value());
             case CbrFilter.NotContainsAny nca -> storedValue instanceof FeatureValue.StringListVal sl && nca.values().stream().noneMatch(sl.values()::contains);
             case CbrFilter.ContainsRange cr -> storedValue instanceof FeatureValue.NumberListVal nl && nl.values().stream()

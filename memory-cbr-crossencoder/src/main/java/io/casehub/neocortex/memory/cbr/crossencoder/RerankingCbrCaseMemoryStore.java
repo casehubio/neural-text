@@ -2,14 +2,10 @@ package io.casehub.neocortex.memory.cbr.crossencoder;
 
 import io.casehub.neocortex.inference.tasks.CrossEncoderReranker;
 import io.casehub.neocortex.inference.tasks.RankedResult;
-import io.casehub.neocortex.memory.EraseRequest;
-import io.casehub.neocortex.memory.MemoryDomain;
 import io.casehub.neocortex.memory.cbr.CbrCase;
 import io.casehub.neocortex.memory.cbr.CbrCaseMemoryStore;
-import io.casehub.neocortex.memory.cbr.CbrFeatureSchema;
-import io.casehub.neocortex.memory.cbr.CbrOutcome;
+import io.casehub.neocortex.memory.cbr.DelegatingCbrCaseMemoryStore;
 import io.casehub.neocortex.memory.cbr.CbrQuery;
-import io.casehub.neocortex.memory.cbr.CbrRetentionPolicy;
 import io.casehub.neocortex.memory.cbr.RetrievalMode;
 import io.casehub.neocortex.memory.cbr.ScoredCbrCase;
 import io.quarkus.arc.Unremovable;
@@ -29,9 +25,8 @@ import java.util.List;
 @Priority(75)
 @Unremovable
 @IfBuildProperty(name = "casehub.cbr.reranking.enabled", stringValue = "true")
-public class RerankingCbrCaseMemoryStore implements CbrCaseMemoryStore {
+public class RerankingCbrCaseMemoryStore extends DelegatingCbrCaseMemoryStore {
 
-    private final CbrCaseMemoryStore delegate;
     private final CrossEncoderReranker reranker;
     private final CbrRerankingConfig config;
 
@@ -39,7 +34,7 @@ public class RerankingCbrCaseMemoryStore implements CbrCaseMemoryStore {
     RerankingCbrCaseMemoryStore(@Delegate @Any CbrCaseMemoryStore delegate,
                                  Instance<CrossEncoderReranker> rerankerInstance,
                                  CbrRerankingConfig config) {
-        this.delegate = delegate;
+        super(delegate);
         this.reranker = rerankerInstance.isResolvable() ? rerankerInstance.get() : null;
         this.config = config;
     }
@@ -47,20 +42,9 @@ public class RerankingCbrCaseMemoryStore implements CbrCaseMemoryStore {
     RerankingCbrCaseMemoryStore(CbrCaseMemoryStore delegate,
                                  CrossEncoderReranker reranker,
                                  CbrRerankingConfig config) {
-        this.delegate = delegate;
+        super(delegate);
         this.reranker = reranker;
         this.config = config;
-    }
-
-    @Override
-    public void registerSchema(CbrFeatureSchema schema) {
-        delegate.registerSchema(schema);
-    }
-
-    @Override
-    public String store(CbrCase cbrCase, String caseType, String entityId,
-                        MemoryDomain domain, String tenantId, String caseId, io.casehub.platform.api.path.Path scope) {
-        return delegate.store(cbrCase, caseType, entityId, domain, tenantId, caseId, scope);
     }
 
     @Override
@@ -103,62 +87,10 @@ public class RerankingCbrCaseMemoryStore implements CbrCaseMemoryStore {
 
         return Collections.unmodifiableList(results);}
 
-    @Override
-    public Integer erase(EraseRequest request) {
-        return delegate.erase(request);
-    }
-
-    @Override
-    public Integer eraseEntity(String entityId, String tenantId) {
-        return delegate.eraseEntity(entityId, tenantId);
-    }
-
-    @Override
-    public Integer eraseByScope(io.casehub.platform.api.path.Path scope, String tenantId) {return delegate.eraseByScope(scope, tenantId);}
-
-
-    @Override
-    public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) {
-        delegate.recordOutcome(caseId, tenantId, outcome);
-    }
-
-    @Override
-    public Integer purge(CbrRetentionPolicy policy) {
-        return delegate.purge(policy);
-    }
-
-    @Override
-    public java.util.Set<String> discoverTenants(io.casehub.neocortex.memory.MemoryDomain domain)                                      {return delegate.discoverTenants(domain);}
-
-    @Override
-    public io.casehub.neocortex.memory.cbr.CbrScanResult scan(io.casehub.neocortex.memory.cbr.CbrScanRequest request) {return delegate.scan(request);}
-
-
-    @Override
-    public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) {
-        delegate.supersede(caseId, tenantId, supersedingCaseId, reason);
-    }
-
-    @Override
-    public void reinstate(String caseId, String tenantId) {
-        delegate.reinstate(caseId, tenantId);
-    }
-
-
     private boolean shouldSkip(CbrQuery query) {
         if (reranker == null) return true;
         if (query.retrievalMode() == RetrievalMode.FEATURE_ONLY) return true;
         return query.problem() == null;
-    }
-
-    @Override
-    public io.casehub.neocortex.memory.cbr.SupersessionStatus getSupersessionStatus(String caseId, String tenantId) {
-        return delegate.getSupersessionStatus(caseId, tenantId);
-    }
-
-    @Override
-    public java.util.List<io.casehub.neocortex.memory.cbr.SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) {
-        return delegate.findSupersededCases(tenantId, domain);
     }
 
 }

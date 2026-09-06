@@ -173,9 +173,14 @@ class CbrFeatureValidatorTest {
             Map.of("phases", CbrFilter.containsAny(List.of("A", "B"))), SCHEMA);
     }
 
-    @Test void validateFilters_containsOnNonListFieldRejected() {
+    @Test void validateFilters_containsOnCategoricalFieldAccepted() {
+        CbrFeatureValidator.validateFilters(
+            Map.of("posture", CbrFilter.contains("A")), SCHEMA);
+    }
+
+    @Test void validateFilters_containsOnNumericFieldRejected() {
         assertThatThrownBy(() -> CbrFeatureValidator.validateFilters(
-            Map.of("posture", CbrFilter.contains("A")), SCHEMA))
+            Map.of("score", CbrFilter.contains("A")), SCHEMA))
             .isInstanceOf(IllegalArgumentException.class);
     }
 

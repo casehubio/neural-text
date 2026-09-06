@@ -2,16 +2,10 @@ package io.casehub.neocortex.memory.cbr.runtime;
 
 import io.casehub.neocortex.memory.EraseRequest;
 import io.casehub.neocortex.memory.MemoryDomain;
-import io.casehub.neocortex.memory.cbr.CbrCase;
 import io.casehub.neocortex.memory.cbr.CbrCaseMemoryStore;
-import io.casehub.neocortex.memory.cbr.CbrCasesErased;
-import io.casehub.neocortex.memory.cbr.CbrFeatureSchema;
-import io.casehub.neocortex.memory.cbr.CbrOutcome;
-import io.casehub.neocortex.memory.cbr.CbrQuery;
-import io.casehub.neocortex.memory.cbr.CbrRetentionPolicy;
-import io.casehub.neocortex.memory.cbr.ScoredCbrCase;
-import io.casehub.neocortex.memory.cbr.SupersessionStatus;
+import io.casehub.neocortex.memory.cbr.DelegatingCbrCaseMemoryStore;
 import io.casehub.platform.api.path.Path;
+import io.casehub.neocortex.memory.cbr.CbrCasesErased;
 import jakarta.annotation.Priority;
 import jakarta.decorator.Decorator;
 import jakarta.decorator.Delegate;
@@ -21,13 +15,11 @@ import jakarta.inject.Inject;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
 
 @Decorator
 @Priority(45)
-public class ErasureNotificationCbrCaseMemoryStore implements CbrCaseMemoryStore {
+public class ErasureNotificationCbrCaseMemoryStore extends DelegatingCbrCaseMemoryStore {
 
-    private final CbrCaseMemoryStore delegate;
     private final Event<CbrCasesErased.ByRequest> byRequestEvent;
     private final Event<CbrCasesErased.ByEntity> byEntityEvent;
     private final Event<CbrCasesErased.ByScope> byScopeEvent;
@@ -48,7 +40,7 @@ public class ErasureNotificationCbrCaseMemoryStore implements CbrCaseMemoryStore
             Event<CbrCasesErased.ByEntity> byEntityEvent,
             Event<CbrCasesErased.ByScope> byScopeEvent,
             Clock clock) {
-        this.delegate = delegate;
+        super(delegate);
         this.byRequestEvent = byRequestEvent;
         this.byEntityEvent = byEntityEvent;
         this.byScopeEvent = byScopeEvent;
@@ -96,26 +88,6 @@ public class ErasureNotificationCbrCaseMemoryStore implements CbrCaseMemoryStore
                     tenantId, count, scope, Instant.now(clock)));
         }
         return count;
-    }
-
-    @Override public void registerSchema(CbrFeatureSchema schema) { delegate.registerSchema(schema); }
-    @Override public String store(CbrCase c, String ct, String e, MemoryDomain d, String t, String ci, Path scope) { return delegate.store(c, ct, e, d, t, ci, scope); }
-    @Override public <C extends CbrCase> List<ScoredCbrCase<C>> retrieveSimilar(CbrQuery q, Class<C> ct) { return delegate.retrieveSimilar(q, ct); }
-    @Override public void recordOutcome(String caseId, String tenantId, CbrOutcome outcome) { delegate.recordOutcome(caseId, tenantId, outcome); }
-    @Override public Integer purge(CbrRetentionPolicy policy) { return delegate.purge(policy); }
-    @Override public java.util.Set<String> discoverTenants(MemoryDomain domain) { return delegate.discoverTenants(domain); }
-    @Override public io.casehub.neocortex.memory.cbr.CbrScanResult scan(io.casehub.neocortex.memory.cbr.CbrScanRequest request) { return delegate.scan(request); }
-    @Override public void supersede(String caseId, String tenantId, String supersedingCaseId, String reason) { delegate.supersede(caseId, tenantId, supersedingCaseId, reason); }
-    @Override public void reinstate(String caseId, String tenantId) { delegate.reinstate(caseId, tenantId); }
-
-    @Override
-    public SupersessionStatus getSupersessionStatus(String caseId, String tenantId) {
-        return delegate.getSupersessionStatus(caseId, tenantId);
-    }
-
-    @Override
-    public java.util.List<SupersessionStatus> findSupersededCases(String tenantId, io.casehub.neocortex.memory.MemoryDomain domain) {
-        return delegate.findSupersededCases(tenantId, domain);
     }
 
 }
